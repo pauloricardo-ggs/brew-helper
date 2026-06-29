@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -506,10 +507,15 @@ private struct BrewInfoValueView: View {
 
     var body: some View {
         if let url = singleURL {
-            Link(value, destination: url)
+            Button {
+                NSWorkspace.shared.open(url)
+            } label: {
+                Text(value)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+            }
+            .buttonStyle(.link)
                 .font(.callout)
-                .lineLimit(2)
-                .truncationMode(.middle)
         } else {
             Text(value)
                 .font(value.contains("\n") ? .system(.caption, design: .monospaced) : .callout)
