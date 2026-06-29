@@ -139,6 +139,64 @@ struct BrewHelperTests {
         #expect(commands.contains(["services", "info", "redis"]))
     }
 
+    @Test @MainActor func itemInfoUsesStructuredHomebrewCommands() async throws {
+        let executor = RecordingBrewExecutor(outputs: [
+            ["info", "--json=v2", "--formula", "git"]: """
+            fopen failed for data file: errno = 2 (No such file or directory)
+            {
+              "formulae": [
+                {
+                  "name": "git",
+                  "full_name": "git",
+                  "desc": "Distributed revision control system",
+                  "homepage": "https://git-scm.com",
+                  "versions": { "stable": "2.50.0" },
+                  "installed": [{ "version": "2.50.0" }],
+                  "dependencies": ["pcre2", "gettext"]
+                }
+              ]
+            }
+            """,
+            ["info", "--json=v2", "--cask", "visual-studio-code"]: """
+            {
+              "casks": [
+                {
+                  "token": "visual-studio-code",
+                  "name": ["Visual Studio Code"],
+                  "desc": "Open-source code editor",
+                  "homepage": "https://code.visualstudio.com/",
+                  "version": "1.101.0"
+                }
+              ]
+            }
+            """,
+            ["tap-info", "--json", "homebrew/core"]: """
+            [
+              {
+                "name": "homebrew/core",
+                "remote": "https://github.com/Homebrew/homebrew-core",
+                "branch": "main",
+                "installed": true,
+                "official": true
+              }
+            ]
+            """
+        ])
+        let client = BrewClient(executor: executor)
+
+        let formulaInfo = try await client.info(for: BrewItem(name: "git", kind: .formula))
+        let caskInfo = try await client.info(for: BrewItem(name: "visual-studio-code", kind: .cask))
+        let tapInfo = try await client.info(for: BrewItem(name: "homebrew/core", kind: .tap))
+
+        let commands = await executor.commands
+        #expect(commands.contains(["info", "--json=v2", "--formula", "git"]))
+        #expect(commands.contains(["info", "--json=v2", "--cask", "visual-studio-code"]))
+        #expect(commands.contains(["tap-info", "--json", "homebrew/core"]))
+        #expect(formulaInfo.sections.first?.rows.contains(BrewInfoRow(label: "Stable", value: "2.50.0")) == true)
+        #expect(caskInfo.title == "Visual Studio Code")
+        #expect(tapInfo.sections.first?.rows.contains(BrewInfoRow(label: "Official", value: "true")) == true)
+    }
+
     @Test @MainActor func commandFailureThrowsBrewClientError() async throws {
         let executor = RecordingBrewExecutor(
             outputs: [["install", "missing"]: "fallback"],

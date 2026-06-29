@@ -95,6 +95,14 @@ final class BrewStore {
         loadingServiceIDs.contains(service.id)
     }
 
+    func info(for item: BrewItem) async throws -> BrewInfo {
+        try await client.info(for: item)
+    }
+
+    func info(for service: BrewService) async throws -> BrewInfo {
+        try await client.info(for: service)
+    }
+
     private func performLoading(_ operation: () async throws -> Void) async {
         isLoading = true
         defer { isLoading = false }

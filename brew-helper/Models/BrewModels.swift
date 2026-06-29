@@ -88,6 +88,22 @@ struct BrewService: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
+struct BrewInfo: Equatable, Sendable {
+    let title: String
+    let subtitle: String?
+    let sections: [BrewInfoSection]
+}
+
+struct BrewInfoSection: Equatable, Sendable {
+    let title: String
+    let rows: [BrewInfoRow]
+}
+
+struct BrewInfoRow: Equatable, Sendable {
+    let label: String
+    let value: String
+}
+
 enum BrewNavigationItem: Hashable, Identifiable {
     case search
     case formulae

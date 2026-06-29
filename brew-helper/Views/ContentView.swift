@@ -205,6 +205,8 @@ private struct InstalledItemsView: View {
             List {
                 ForEach(store.filteredInstalledItems) { item in
                     BrewItemRow(item: item) {
+                        try await store.info(for: item)
+                    } action: {
                         pendingRemovalItem = item
                     }
                 }
@@ -266,6 +268,8 @@ private struct SearchInstallView: View {
             List {
                 ForEach(store.searchResults) { item in
                     BrewItemRow(item: item) {
+                        try await store.info(for: item)
+                    } action: {
                         Task { await store.install(item) }
                     }
                 }
@@ -333,6 +337,8 @@ private struct ServicesView: View {
         List {
             ForEach(store.services) { service in
                 BrewServiceRow(service: service, isLoading: store.isServiceLoading(service)) {
+                    try await store.info(for: service)
+                } startAction: {
                     Task { await store.start(service) }
                 } stopAction: {
                     Task { await store.stop(service) }
@@ -364,8 +370,171 @@ private struct RefreshToolbarControl: View {
     }
 }
 
+private struct InfoButton: View {
+    let title: String
+    let infoAction: () async throws -> BrewInfo
+
+    @State private var isPresented = false
+    @State private var state = BrewInfoPopoverState.idle
+
+    var body: some View {
+        Button {
+            isPresented = true
+            loadInfo()
+        } label: {
+            Label("Info", systemImage: "info.circle")
+                .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.borderless)
+        .frame(width: 30, height: 30)
+        .help("Show info")
+        .popover(isPresented: $isPresented, arrowEdge: .trailing) {
+            BrewInfoPopover(title: title, state: state)
+        }
+    }
+
+    private func loadInfo() {
+        state = .loading
+
+        Task {
+            do {
+                state = .loaded(try await infoAction())
+            } catch {
+                state = .failed(error.localizedDescription)
+            }
+        }
+    }
+}
+
+private enum BrewInfoPopoverState {
+    case idle
+    case loading
+    case loaded(BrewInfo)
+    case failed(String)
+}
+
+private struct BrewInfoPopover: View {
+    let title: String
+    let state: BrewInfoPopoverState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            switch state {
+            case .idle, .loading:
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading \(title)...")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: 320, height: 80)
+            case .failed(let message):
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Could not load info", systemImage: "exclamationmark.triangle")
+                        .font(.headline)
+                    Text(message)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                .frame(width: 340, alignment: .leading)
+            case .loaded(let info):
+                BrewInfoContent(info: info)
+            }
+        }
+        .padding(16)
+        .frame(width: 420, height: 440, alignment: .topLeading)
+    }
+}
+
+private struct BrewInfoContent: View {
+    let info: BrewInfo
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(info.title)
+                    .font(.headline)
+
+                if let subtitle = info.subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(Array(info.sections.enumerated()), id: \.offset) { _, section in
+                        BrewInfoSectionView(section: section)
+                    }
+                }
+                .padding(.trailing, 6)
+                .frame(width: 380, alignment: .leading)
+            }
+        }
+    }
+}
+
+private struct BrewInfoSectionView: View {
+    let section: BrewInfoSection
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(section.title)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            ForEach(Array(section.rows.enumerated()), id: \.offset) { _, row in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    BrewInfoValueView(value: row.value)
+                }
+            }
+        }
+    }
+}
+
+private struct BrewInfoValueView: View {
+    let value: String
+
+    var body: some View {
+        if let url = singleURL {
+            Link(value, destination: url)
+                .font(.callout)
+                .lineLimit(2)
+                .truncationMode(.middle)
+        } else {
+            Text(value)
+                .font(value.contains("\n") ? .system(.caption, design: .monospaced) : .callout)
+                .lineLimit(value.contains("\n") ? 12 : 4)
+                .truncationMode(.tail)
+        }
+    }
+
+    private var singleURL: URL? {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            trimmedValue.contains(" ") == false,
+            let url = URL(string: trimmedValue),
+            ["http", "https"].contains(url.scheme?.lowercased())
+        else {
+            return nil
+        }
+
+        return url
+    }
+}
+
 private struct BrewItemRow: View {
     let item: BrewItem
+    let infoAction: () async throws -> BrewInfo
     let action: () -> Void
 
     var body: some View {
@@ -383,6 +552,8 @@ private struct BrewItemRow: View {
             }
 
             Spacer()
+
+            InfoButton(title: item.name, infoAction: infoAction)
 
             Button {
                 action()
@@ -432,6 +603,7 @@ private struct BrewKindTag: View {
 private struct BrewServiceRow: View {
     let service: BrewService
     let isLoading: Bool
+    let infoAction: () async throws -> BrewInfo
     let startAction: () -> Void
     let stopAction: () -> Void
 
@@ -459,6 +631,8 @@ private struct BrewServiceRow: View {
             }
 
             Spacer()
+
+            InfoButton(title: service.name, infoAction: infoAction)
 
             Group {
                 if isLoading {
