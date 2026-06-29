@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without the leading v"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: brew-helper
+  PROJECT_PATH: brew-helper.xcodeproj
+  SCHEME: brew-helper
+  TAP_REPOSITORY: pauloricardo-ggs/homebrew-tap
+  CASK_PATH: Casks/brew-helper.rb
+
+jobs:
+  release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout app
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+            TAG="v${VERSION}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            VERSION="${TAG#v}"
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build app
+        run: |
+          xcodebuild \
+            -project "${PROJECT_PATH}" \
+            -scheme "${SCHEME}" \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Zip app
+        run: |
+          ditto -c -k --keepParent \
+            "build/Build/Products/Release/${APP_NAME}.app" \
+            "${APP_NAME}.zip"
+
+      - name: Calculate SHA256
+        id: sha
+        run: |
+          SHA="$(shasum -a 256 "${APP_NAME}.zip" | awk '{print $1}')"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            gh release upload "${{ steps.version.outputs.tag }}" "${APP_NAME}.zip" --clobber
+          else
+            gh release create "${{ steps.version.outputs.tag }}" "${APP_NAME}.zip" \
+              --title "${{ steps.version.outputs.tag }}" \
+              --notes "Brew Helper ${{ steps.version.outputs.tag }}"
+          fi
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TAP_REPOSITORY }}
+          token: ${{ secrets.TAP_REPO_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update cask
+        run: |
+          cd homebrew-tap
+          ruby -pi -e 'gsub(/version ".*"/, "version \"${{ steps.version.outputs.version }}\"")' "${CASK_PATH}"
+          ruby -pi -e 'gsub(/sha256 ".*"/, "sha256 \"${{ steps.sha.outputs.sha }}\"")' "${CASK_PATH}"
+
+      - name: Commit tap update
+        run: |
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${CASK_PATH}"
+
+          if git diff --cached --quiet; then
+            echo "Cask is already up to date."
+            exit 0
+          fi
+
+          git commit -m "Update brew-helper to ${{ steps.version.outputs.version }}"
+          git push
