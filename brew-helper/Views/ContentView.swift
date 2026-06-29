@@ -41,6 +41,15 @@ private struct SidebarView: View {
                 .accessibilityIdentifier("sidebar.search")
                 .tag(BrewNavigationItem.search)
 
+            SidebarNavigationRow(
+                title: BrewNavigationItem.explore.title,
+                systemImage: BrewNavigationItem.explore.systemImage,
+                iconColor: color(for: .explore),
+                count: nil
+            )
+                .accessibilityIdentifier("sidebar.explore")
+                .tag(BrewNavigationItem.explore)
+
             Section("Library") {
                 ForEach(libraryItems) { item in
                     SidebarNavigationRow(
@@ -94,6 +103,8 @@ private struct SidebarView: View {
             Color(red: 0.34, green: 0.58, blue: 0.66)
         case .search:
             Color(red: 0.58, green: 0.58, blue: 0.66)
+        case .explore:
+            Color(red: 0.64, green: 0.48, blue: 0.26)
         }
     }
 
@@ -178,6 +189,8 @@ private struct DetailView: View {
             switch store.selectedNavigationItem ?? .formulae {
             case .search:
                 SearchInstallView(store: store)
+            case .explore:
+                ExploreView(store: store)
             case .formulae, .casks, .taps:
                 InstalledItemsView(store: store)
             case .services:
@@ -193,6 +206,65 @@ private struct DetailView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                     .padding()
             }
+        }
+    }
+}
+
+private struct ExploreView: View {
+    @Bindable var store: BrewStore
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Picker("Type", selection: $store.exploreKind) {
+                    Text(BrewItemKind.formula.title).tag(BrewItemKind.formula)
+                    Text(BrewItemKind.cask.title).tag(BrewItemKind.cask)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 220)
+
+                Picker("Period", selection: $store.explorePeriod) {
+                    ForEach(BrewAnalyticsPeriod.allCases) { period in
+                        Text(period.title).tag(period)
+                    }
+                }
+                .frame(width: 140)
+
+                Spacer()
+
+                if store.isExploreLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .padding()
+
+            Divider()
+
+            List {
+                ForEach(Array(store.filteredPopularItems.enumerated()), id: \.element.id) { index, item in
+                    PopularItemRow(rank: index + 1, item: item) {
+                        try await store.info(for: item.brewItem)
+                    } action: {
+                        Task { await store.install(item.brewItem) }
+                    }
+                }
+            }
+            .listStyle(.inset)
+        }
+        .navigationTitle("Explore")
+        .searchable(text: $store.exploreSearchText, prompt: "Filter popular items")
+        .accessibilityIdentifier("exploreView")
+        .task {
+            if store.popularItems.isEmpty {
+                await store.loadPopularItems()
+            }
+        }
+        .onChange(of: store.exploreKind) {
+            Task { await store.loadPopularItems() }
+        }
+        .onChange(of: store.explorePeriod) {
+            Task { await store.loadPopularItems() }
         }
     }
 }
@@ -253,6 +325,50 @@ private struct InstalledItemsView: View {
         case .tap:
             "Remove tap \(item.name)?"
         }
+    }
+}
+
+private struct PopularItemRow: View {
+    let rank: Int
+    let item: BrewPopularItem
+    let infoAction: () async throws -> BrewInfo
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(rank, format: .number)
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 34, alignment: .trailing)
+
+            Image(systemName: item.kind.systemImage)
+                .foregroundStyle(item.kind.accentColor)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    Text(item.name)
+                    BrewKindTag(kind: item.kind)
+                }
+
+                Text("\(item.count.formatted(.number)) installs in \(item.period.title.lowercased())")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            InfoButton(title: item.name, infoAction: infoAction)
+
+            Button {
+                action()
+            } label: {
+                Label("Install", systemImage: "plus.circle")
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(.vertical, 4)
+        .accessibilityIdentifier("popularItem.\(item.name)")
     }
 }
 

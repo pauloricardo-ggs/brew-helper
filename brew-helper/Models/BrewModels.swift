@@ -30,6 +30,25 @@ enum BrewItemKind: String, CaseIterable, Identifiable, Codable, Sendable {
     }
 }
 
+enum BrewAnalyticsPeriod: String, CaseIterable, Identifiable, Codable, Sendable {
+    case thirtyDays = "30d"
+    case ninetyDays = "90d"
+    case year = "365d"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .thirtyDays:
+            "30 days"
+        case .ninetyDays:
+            "90 days"
+        case .year:
+            "365 days"
+        }
+    }
+}
+
 struct BrewItem: Identifiable, Hashable, Codable, Sendable {
     let id: String
     let name: String
@@ -41,6 +60,26 @@ struct BrewItem: Identifiable, Hashable, Codable, Sendable {
         self.kind = kind
         self.installed = installed
         self.id = "\(kind.rawValue):\(name)"
+    }
+}
+
+struct BrewPopularItem: Identifiable, Hashable, Codable, Sendable {
+    let id: String
+    let name: String
+    let kind: BrewItemKind
+    let count: Int
+    let period: BrewAnalyticsPeriod
+
+    init(name: String, kind: BrewItemKind, count: Int, period: BrewAnalyticsPeriod) {
+        self.name = name
+        self.kind = kind
+        self.count = count
+        self.period = period
+        self.id = "\(kind.rawValue):\(period.rawValue):\(name)"
+    }
+
+    var brewItem: BrewItem {
+        BrewItem(name: name, kind: kind, installed: false)
     }
 }
 
@@ -106,6 +145,7 @@ struct BrewInfoRow: Equatable, Sendable {
 
 enum BrewNavigationItem: Hashable, Identifiable {
     case search
+    case explore
     case formulae
     case casks
     case services
@@ -117,6 +157,8 @@ enum BrewNavigationItem: Hashable, Identifiable {
         switch self {
         case .search:
             "Search"
+        case .explore:
+            "Explore"
         case .formulae:
             "Formulae"
         case .casks:
@@ -132,6 +174,8 @@ enum BrewNavigationItem: Hashable, Identifiable {
         switch self {
         case .search:
             "magnifyingglass"
+        case .explore:
+            "chart.bar.xaxis"
         case .formulae:
             BrewItemKind.formula.systemImage
         case .casks:
@@ -151,7 +195,7 @@ enum BrewNavigationItem: Hashable, Identifiable {
             .cask
         case .taps:
             .tap
-        case .search, .services:
+        case .search, .explore, .services:
             nil
         }
     }

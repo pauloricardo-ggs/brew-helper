@@ -17,6 +17,12 @@ extension BrewStore {
             BrewItem(name: "git-lfs", kind: .formula, installed: false),
             BrewItem(name: "github", kind: .cask, installed: false)
         ]
+        store.popularItems = [
+            BrewPopularItem(name: "node", kind: .formula, count: 120_000, period: .thirtyDays),
+            BrewPopularItem(name: "python@3.13", kind: .formula, count: 98_000, period: .thirtyDays),
+            BrewPopularItem(name: "visual-studio-code", kind: .cask, count: 82_000, period: .thirtyDays),
+            BrewPopularItem(name: "iterm2", kind: .cask, count: 65_000, period: .thirtyDays)
+        ]
         store.services = [
             BrewService(
                 name: "postgresql@16",

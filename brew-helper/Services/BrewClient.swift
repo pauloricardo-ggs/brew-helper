@@ -125,6 +125,19 @@ struct BrewClient: Sendable {
         return BrewOutputParser.parseServices(result.standardOutput)
     }
 
+    func popularItems(kind: BrewItemKind, period: BrewAnalyticsPeriod) async throws -> [BrewPopularItem] {
+        guard let url = BrewAnalyticsEndpoint.url(kind: kind, period: period) else {
+            return []
+        }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+        if let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) == false {
+            throw BrewClientError.commandFailed(command: url.absoluteString, message: "Request failed with status \(httpResponse.statusCode).")
+        }
+
+        return try BrewAnalyticsParser.parse(data, kind: kind, period: period)
+    }
+
     func startService(named name: String) async throws {
         try await checkedRun(["services", "start", name])
     }
@@ -244,6 +257,19 @@ struct BrewClient: Sendable {
             throw BrewClientError.commandFailed(command: "brew \(arguments.joined(separator: " "))", message: message.isEmpty ? fallback : message)
         }
         return result
+    }
+}
+
+private enum BrewAnalyticsEndpoint {
+    static func url(kind: BrewItemKind, period: BrewAnalyticsPeriod) -> URL? {
+        switch kind {
+        case .formula:
+            URL(string: "https://formulae.brew.sh/api/analytics/install-on-request/homebrew-core/\(period.rawValue).json")
+        case .cask:
+            URL(string: "https://formulae.brew.sh/api/analytics/cask-install/homebrew-cask/\(period.rawValue).json")
+        case .tap:
+            nil
+        }
     }
 }
 
@@ -492,5 +518,48 @@ enum BrewOutputParser {
         default:
             .unknown
         }
+    }
+}
+
+enum BrewAnalyticsParser {
+    static func parse(_ data: Data, kind: BrewItemKind, period: BrewAnalyticsPeriod) throws -> [BrewPopularItem] {
+        guard
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let formulae = root["formulae"] as? [String: Any]
+        else {
+            return []
+        }
+
+        let itemKey = kind == .cask ? "cask" : "formula"
+
+        return formulae.values
+            .compactMap { value -> BrewPopularItem? in
+                guard
+                    let entries = value as? [[String: Any]],
+                    let entry = entries.first,
+                    let name = entry[itemKey] as? String,
+                    let countText = entry["count"] as? String
+                else {
+                    return nil
+                }
+
+                return BrewPopularItem(
+                    name: name,
+                    kind: kind,
+                    count: count(from: countText),
+                    period: period
+                )
+            }
+            .sorted {
+                if $0.count == $1.count {
+                    return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                }
+
+                return $0.count > $1.count
+            }
+    }
+
+    private static func count(from value: String) -> Int {
+        Int(value.filter(\.isNumber)) ?? 0
     }
 }

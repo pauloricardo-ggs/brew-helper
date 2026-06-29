@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import brew_helper
 
@@ -55,6 +56,44 @@ struct BrewHelperTests {
         #expect(results.count == 3)
         #expect(results.allSatisfy { $0.installed == false })
         #expect(results.contains(BrewItem(name: "github", kind: .cask, installed: false)))
+    }
+
+    @Test func parsesFormulaAnalyticsSortedByInstallCount() throws {
+        let json = """
+        {
+          "category": "install_on_request",
+          "formulae": {
+            "swiftlint": [{ "formula": "swiftlint", "count": "9,100" }],
+            "git": [{ "formula": "git", "count": "12,300" }]
+          }
+        }
+        """
+
+        let items = try BrewAnalyticsParser.parse(Data(json.utf8), kind: .formula, period: .thirtyDays)
+
+        #expect(items.map { $0.name } == ["git", "swiftlint"])
+        #expect(items.first?.count == 12300)
+        #expect(items.first?.kind == .formula)
+        #expect(items.first?.period == .thirtyDays)
+    }
+
+    @Test func parsesCaskAnalyticsUsingCaskKey() throws {
+        let json = """
+        {
+          "category": "cask_install",
+          "formulae": {
+            "iterm2": [{ "cask": "iterm2", "count": "65,000" }],
+            "visual-studio-code": [{ "cask": "visual-studio-code", "count": "82,000" }]
+          }
+        }
+        """
+
+        let items = try BrewAnalyticsParser.parse(Data(json.utf8), kind: .cask, period: .ninetyDays)
+
+        #expect(items.map { $0.name } == ["visual-studio-code", "iterm2"])
+        #expect(items.first?.count == 82000)
+        #expect(items.first?.kind == .cask)
+        #expect(items.first?.period == .ninetyDays)
     }
 
     @Test @MainActor func uninstallUsesExpectedCommandForEachInstalledKind() async throws {
@@ -256,6 +295,7 @@ struct BrewHelperTests {
 
         #expect(store.services.contains(BrewService(name: "postgresql@16", status: .started, user: "paulo", file: "~/Library/LaunchAgents/homebrew.mxcl.postgresql@16.plist")))
         #expect(store.services.contains(BrewService(name: "redis", status: .stopped)))
+        #expect(store.popularItems.contains(BrewPopularItem(name: "node", kind: .formula, count: 120_000, period: .thirtyDays)))
     }
 }
 

@@ -6,10 +6,15 @@ import Observation
 final class BrewStore {
     var installedItems: [BrewItem] = []
     var searchResults: [BrewItem] = []
+    var popularItems: [BrewPopularItem] = []
     var services: [BrewService] = []
     var selectedNavigationItem: BrewNavigationItem? = .formulae
     var searchText: String = ""
+    var exploreSearchText: String = ""
+    var exploreKind: BrewItemKind = .formula
+    var explorePeriod: BrewAnalyticsPeriod = .thirtyDays
     var isLoading = false
+    var isExploreLoading = false
     var loadingServiceIDs: Set<BrewService.ID> = []
     var message: String?
 
@@ -38,6 +43,14 @@ final class BrewStore {
         }
     }
 
+    var filteredPopularItems: [BrewPopularItem] {
+        popularItems.filter { item in
+            item.kind == exploreKind
+                && item.period == explorePeriod
+                && (exploreSearchText.isEmpty || item.name.localizedCaseInsensitiveContains(exploreSearchText))
+        }
+    }
+
     func refreshAll() async {
         await loadInstalledItems()
         await loadServices()
@@ -52,6 +65,18 @@ final class BrewStore {
     func runSearch() async {
         await performLoading {
             searchResults = try await client.search(query: searchText)
+        }
+    }
+
+    func loadPopularItems() async {
+        isExploreLoading = true
+        defer { isExploreLoading = false }
+
+        do {
+            popularItems = try await client.popularItems(kind: exploreKind, period: explorePeriod)
+            message = nil
+        } catch {
+            message = error.localizedDescription
         }
     }
 
