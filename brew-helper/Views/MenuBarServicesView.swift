@@ -2,22 +2,11 @@ import AppKit
 import SwiftUI
 
 struct MenuBarServicesView: View {
-    @Environment(\.openWindow) private var openWindow
     @Bindable var store: BrewStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Button(action: {
-                    openWindow(id: "main", value: "main")
-                    NSApp.activate(ignoringOtherApps: true)
-                }) {
-                    Label("Reopen Brew Helper", systemImage: "arrow.down.left.and.arrow.up.right")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, 4)
-                
                 Text("Homebrew Services")
                     .font(.headline)
                 
