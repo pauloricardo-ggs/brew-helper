@@ -109,6 +109,11 @@ struct BrewClient: Sendable {
         try await checkedRun(arguments)
     }
 
+    func upgrade(_ item: BrewItem) async throws {
+        let arguments = item.kind == .cask ? ["upgrade", "--cask", item.name] : ["upgrade", item.name]
+        try await checkedRun(arguments)
+    }
+
     func uninstall(_ item: BrewItem) async throws {
         if item.kind == .tap {
             try await checkedRun(["untap", item.name])

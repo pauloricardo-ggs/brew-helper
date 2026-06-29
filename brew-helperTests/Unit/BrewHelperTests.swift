@@ -120,6 +120,21 @@ struct BrewHelperTests {
         #expect(commands.contains(["install", "--cask", "github"]))
     }
 
+    @Test @MainActor func upgradeUsesExpectedCommandForFormulaeAndCasks() async throws {
+        let executor = RecordingBrewExecutor(outputs: [
+            ["upgrade", "git"]: "",
+            ["upgrade", "--cask", "github"]: ""
+        ])
+        let client = BrewClient(executor: executor)
+
+        try await client.upgrade(BrewItem(name: "git", kind: .formula))
+        try await client.upgrade(BrewItem(name: "github", kind: .cask))
+
+        let commands = await executor.commands
+        #expect(commands.contains(["upgrade", "git"]))
+        #expect(commands.contains(["upgrade", "--cask", "github"]))
+    }
+
     @Test @MainActor func serviceCommandsUseExpectedArguments() async throws {
         let executor = RecordingBrewExecutor(outputs: [
             ["services", "start", "redis"]: "",
@@ -229,9 +244,10 @@ struct BrewHelperTests {
         #expect(store.message == nil)
     }
 
-    @Test @MainActor func storeInstallAndUninstallRefreshInstalledItems() async {
+    @Test @MainActor func storeInstallUpgradeAndUninstallRefreshInstalledItems() async {
         let executor = RecordingBrewExecutor(outputs: [
             ["install", "git"]: "",
+            ["upgrade", "git"]: "",
             ["uninstall", "git"]: "",
             ["cleanup", "git"]: "",
             ["list", "--formula"]: "git\n",
@@ -245,9 +261,13 @@ struct BrewHelperTests {
         await store.install(item)
         #expect(store.installedItems == [BrewItem(name: "git", kind: .formula)])
 
+        await store.upgrade(BrewItem(name: "git", kind: .formula))
+        #expect(store.installedItems == [BrewItem(name: "git", kind: .formula)])
+
         await store.uninstall(BrewItem(name: "git", kind: .formula))
         let commands = await executor.commands
         #expect(commands.contains(["install", "git"]))
+        #expect(commands.contains(["upgrade", "git"]))
         #expect(commands.contains(["uninstall", "git"]))
     }
 

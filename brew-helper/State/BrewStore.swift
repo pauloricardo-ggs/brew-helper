@@ -10,6 +10,7 @@ final class BrewStore {
     var selectedNavigationItem: BrewNavigationItem? = .formulae
     var searchText: String = ""
     var isLoading = false
+    var loadingItemIDs: Set<BrewItem.ID> = []
     var loadingServiceIDs: Set<BrewService.ID> = []
     var message: String?
 
@@ -56,15 +57,23 @@ final class BrewStore {
     }
 
     func install(_ item: BrewItem) async {
-        await performLoading {
+        await performItemLoading(item) {
             try await client.install(item)
             searchResults.removeAll { $0.id == item.id }
             installedItems = try await client.installedItems()
         }
     }
 
+    func upgrade(_ item: BrewItem) async {
+        await performItemLoading(item) {
+            try await client.upgrade(item)
+            installedItems = try await client.installedItems()
+            services = try await client.services()
+        }
+    }
+
     func uninstall(_ item: BrewItem) async {
-        await performLoading {
+        await performItemLoading(item) {
             try await client.uninstall(item)
             installedItems.removeAll { $0.id == item.id }
             services = try await client.services()
@@ -91,6 +100,10 @@ final class BrewStore {
         }
     }
 
+    func isItemLoading(_ item: BrewItem) -> Bool {
+        loadingItemIDs.contains(item.id)
+    }
+
     func isServiceLoading(_ service: BrewService) -> Bool {
         loadingServiceIDs.contains(service.id)
     }
@@ -106,6 +119,18 @@ final class BrewStore {
     private func performLoading(_ operation: () async throws -> Void) async {
         isLoading = true
         defer { isLoading = false }
+
+        do {
+            try await operation()
+            message = nil
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    private func performItemLoading(_ item: BrewItem, operation: () async throws -> Void) async {
+        loadingItemIDs.insert(item.id)
+        defer { loadingItemIDs.remove(item.id) }
 
         do {
             try await operation()

@@ -205,10 +205,12 @@ private struct InstalledItemsView: View {
         VStack(spacing: 0) {
             List {
                 ForEach(store.filteredInstalledItems) { item in
-                    BrewItemRow(item: item) {
+                    BrewItemRow(item: item, isLoading: store.isItemLoading(item)) {
                         try await store.info(for: item)
                     } action: {
                         pendingRemovalItem = item
+                    } upgradeAction: {
+                        Task { await store.upgrade(item) }
                     }
                 }
             }
@@ -268,7 +270,7 @@ private struct SearchInstallView: View {
 
             List {
                 ForEach(store.searchResults) { item in
-                    BrewItemRow(item: item) {
+                    BrewItemRow(item: item, isLoading: store.isItemLoading(item)) {
                         try await store.info(for: item)
                     } action: {
                         Task { await store.install(item) }
@@ -540,8 +542,24 @@ private struct BrewInfoValueView: View {
 
 private struct BrewItemRow: View {
     let item: BrewItem
+    let isLoading: Bool
     let infoAction: () async throws -> BrewInfo
     let action: () -> Void
+    let upgradeAction: (() -> Void)?
+
+    init(
+        item: BrewItem,
+        isLoading: Bool,
+        infoAction: @escaping () async throws -> BrewInfo,
+        action: @escaping () -> Void,
+        upgradeAction: (() -> Void)? = nil
+    ) {
+        self.item = item
+        self.isLoading = isLoading
+        self.infoAction = infoAction
+        self.action = action
+        self.upgradeAction = upgradeAction
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -560,13 +578,29 @@ private struct BrewItemRow: View {
             Spacer()
 
             InfoButton(title: item.name, infoAction: infoAction)
+                .disabled(isLoading)
 
-            Button {
-                action()
-            } label: {
-                Label(actionTitle, systemImage: actionImage)
+            HStack(spacing: 8) {
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    if canUpgrade, let upgradeAction {
+                        Button(action: upgradeAction) {
+                            Label("Upgrade", systemImage: "arrow.up.circle")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    Button {
+                        action()
+                    } label: {
+                        Label(actionTitle, systemImage: actionImage)
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
-            .buttonStyle(.bordered)
+            .frame(minWidth: actionGroupWidth, minHeight: 30, alignment: .trailing)
         }
         .padding(.vertical, 4)
         .accessibilityIdentifier("brewItem.\(item.name)")
@@ -590,6 +624,14 @@ private struct BrewItemRow: View {
         } else {
             "plus.circle"
         }
+    }
+
+    private var canUpgrade: Bool {
+        item.installed && item.kind != .tap
+    }
+
+    private var actionGroupWidth: CGFloat {
+        canUpgrade ? 194 : 96
     }
 }
 
